@@ -93,7 +93,7 @@ def create_proxy_auth_extension(proxy_host, proxy_port, proxy_username, proxy_pa
 # Check if running in Docker mode
 DOCKER_MODE = os.getenv("DOCKERMODE", "false").lower() == "true"
 
-SERVER_PORT = int(os.getenv("SERVER_PORT", 8000))
+SERVER_PORT = int(os.getenv("SERVER_PORT", 8082))
 
 # Chromium options arguments
 arguments = [
