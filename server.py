@@ -13,6 +13,82 @@ import argparse
 from pyvirtualdisplay import Display
 import uvicorn
 import atexit
+import string
+
+
+def create_proxy_auth_extension(proxy_host, proxy_port, proxy_username, proxy_password, scheme='http',
+                                plugin_path=None):
+    # 创建Chrome插件的manifest.json文件内容
+    manifest_json = """
+    {
+        "version": "1.0.0",
+        "manifest_version": 2,
+        "name": "16YUN Proxy",
+        "permissions": [
+            "proxy",
+            "tabs",
+            "unlimitedStorage",
+            "storage",
+            "<all_urls>",
+            "webRequest",
+            "webRequestBlocking"
+        ],
+        "background": {
+            "scripts": ["background.js"]
+        },
+        "minimum_chrome_version":"22.0.0"
+    }
+    """
+
+    # 创建Chrome插件的background.js文件内容
+    background_js = string.Template(
+        """
+        var config = {
+            mode: "fixed_servers",
+            rules: {
+                singleProxy: {
+                    scheme: "${scheme}",
+                    host: "${host}",
+                    port: parseInt(${port})
+                },
+                bypassList: ["localhost"]
+            }
+        };
+
+        chrome.proxy.settings.set({value: config, scope: "regular"}, function() {});
+
+        function callbackFn(details) {
+            return {
+                authCredentials: {
+                    username: "${username}",
+                    password: "${password}"
+                }
+            };
+        }
+
+        chrome.webRequest.onAuthRequired.addListener(
+            callbackFn,
+            {urls: ["<all_urls>"]},
+            ['blocking']
+        );
+        """
+    ).substitute(
+        host=proxy_host,
+        port=proxy_port,
+        username=proxy_username,
+        password=proxy_password,
+        scheme=scheme,
+    )
+
+    # 创建插件目录并写入manifest.json和background.js文件
+    os.makedirs(plugin_path, exist_ok=True)
+    with open(os.path.join(plugin_path, "manifest.json"), "w+") as f:
+        f.write(manifest_json)
+    with open(os.path.join(plugin_path, "background.js"), "w+") as f:
+        f.write(background_js)
+
+    return os.path.join(plugin_path)
+
 
 # Check if running in Docker mode
 DOCKER_MODE = os.getenv("DOCKERMODE", "false").lower() == "true"
@@ -35,7 +111,7 @@ arguments = [
     "-deny-permission-prompts",
     "-disable-gpu",
     "-accept-lang=en-US",
-    #"-incognito" # You can add this line to open the browser in incognito mode by default 
+    # "-incognito" # You can add this line to open the browser in incognito mode by default
 ]
 
 browser_path = "/usr/bin/google-chrome"
@@ -62,7 +138,7 @@ def is_safe_url(url: str) -> bool:
 
 # Function to bypass Cloudflare protection
 def bypass_cloudflare(url: str, retries: int, log: bool, proxy: str = None) -> ChromiumPage:
-
+    # 指定插件路径
     if DOCKER_MODE:
         options = ChromiumOptions()
         options.set_argument("--auto-open-devtools-for-tabs", "true")
@@ -73,10 +149,18 @@ def bypass_cloudflare(url: str, retries: int, log: bool, proxy: str = None) -> C
     else:
         options = ChromiumOptions()
         options.set_paths(browser_path=browser_path).headless(False)
-        
+
     if proxy:
-        options.set_proxy(proxy)
-    
+        host, port, username, password= proxy.split(":")
+        proxy_auth_plugin_path = create_proxy_auth_extension(
+            plugin_path="/tmp/",
+            proxy_host=host,
+            proxy_port=port,
+            proxy_username=username,
+            proxy_password=password
+        )
+        options.add_extension(path=proxy_auth_plugin_path)
+
     driver = ChromiumPage(addr_or_opts=options)
     try:
         driver.get(url)
@@ -130,16 +214,19 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     display = None
-    
+
     if args.headless or DOCKER_MODE:
         display = Display(visible=0, size=(1920, 1080))
         display.start()
-        
+
+
         def cleanup_display():
             if display:
                 display.stop()
+
+
         atexit.register(cleanup_display)
-    
+
     if args.nolog:
         log = False
     else:
