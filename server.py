@@ -163,6 +163,8 @@ def bypass_cloudflare(url: str, retries: int, log: bool, proxy: str = None) -> C
                 proxy_password=password
             )
             options.add_extension(path=proxy_auth_plugin_path)
+        elif len(proxy_segs) == 1:
+            raise ValueError
         else:
             options.set_proxy(proxy=proxy)
 
