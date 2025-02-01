@@ -3,3 +3,4 @@ pydantic
 uvicorn
 PyVirtualDisplay
 DrissionPage==4.0.5.6
+latest_user_agents

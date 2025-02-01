@@ -9,6 +9,7 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel
 from typing import Dict
 import argparse
+import random
 
 from pyvirtualdisplay import Display
 import uvicorn
@@ -151,15 +152,19 @@ def bypass_cloudflare(url: str, retries: int, log: bool, proxy: str = None) -> C
         options.set_paths(browser_path=browser_path).headless(False)
 
     if proxy:
-        host, port, username, password= proxy.split(":")
-        proxy_auth_plugin_path = create_proxy_auth_extension(
-            plugin_path="/tmp/",
-            proxy_host=host,
-            proxy_port=port,
-            proxy_username=username,
-            proxy_password=password
-        )
-        options.add_extension(path=proxy_auth_plugin_path)
+        proxy_segs = proxy.split(":")
+        if len(proxy_segs) == 4:
+            host, port, username, password, *_ = proxy_segs
+            proxy_auth_plugin_path = create_proxy_auth_extension(
+                plugin_path="/tmp/",
+                proxy_host=host,
+                proxy_port=port,
+                proxy_username=username,
+                proxy_password=password
+            )
+            options.add_extension(path=proxy_auth_plugin_path)
+        else:
+            options.set_proxy(proxy=proxy)
 
     driver = ChromiumPage(addr_or_opts=options)
     try:
